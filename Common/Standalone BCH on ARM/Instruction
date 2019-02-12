@@ -1,0 +1,9 @@
+sujoy@sujoy:~/Desktop/C_C++_Teaching/pqm4$ make
+sujoy@sujoy:~/Desktop/C_C++_Teaching/pqm4$ sudo python3 benchmarks.py
+sujoy@sujoy:~/Desktop/C_C++_Teaching/pqm4$ python3 benchmarks_to_md.py
+
+connect the TX/TXD pin of the USB connector to the PA3 pin on the board, 
+and connect RX/RXD to PA2. Depending on your setup, 
+you may also want to connect the GND pins.
+
+

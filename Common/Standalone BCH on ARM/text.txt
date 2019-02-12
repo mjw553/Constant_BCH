@@ -1,0 +1,6 @@
+This script flashes the benchmarking binaries onto the board, 
+ and then writes the resulting output to the benchmarks directory.
+Flashing bin/crypto_kem_bch_ref_speed.bin..
+Flashed, now running benchmarks..
+  .. found output marker..
+  .. wrote benchmarks!
