@@ -29,4 +29,5 @@ From the `crypto_kem` directory:
 * `make`
 
 ### Running the benchmarks
-Run the command `sudo python3 benchmarks.py`
+Run the command `sudo python3 benchmarks.py`<br>
+Once completed, results are located in `benchmarks/crypto_kem/bch/ref`
