@@ -19,8 +19,8 @@ See README_ARM for specific details on the framework.
 
 ## Compilation Instructions
 ### Pre-compilation
-Choose an implementation from `crypto_kem/bch/ref/bch_implementations`
-Copy chosen implementation to `crypto_kem/bch/ref/`
+Choose an implementation from `crypto_kem/bch/ref/bch_implementations`<br>
+Copy chosen implementation to `crypto_kem/bch/ref/`<br>
 Rename copied file to `bch.c` in `crypto_kem/bch/ref/`
 
 ### Compilation
@@ -29,5 +29,4 @@ From the `crypto_kem` directory:
 * `make`
 
 ### Running the benchmarks
-Run the command:
-* `sudo python3 benchmarks.py`
+Run the command `sudo python3 benchmarks.py`
