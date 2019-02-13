@@ -31,22 +31,22 @@ int test_bch()
 	
 	cycles = malloc(sizeof(unsigned long long *) * REPEATS);
 	for(k = 0; k < REPEATS; k++)
-		cycles[k] = calloc(sizeof(unsigned long long), MAX_Err);
+		cycles[k] = calloc(sizeof(unsigned long long), MAX_Err+1);
 		
 	int pos_arr[29] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28};
 
 	seed_rng();
 
 	for(k=0;k<REPEATS + extras;k++){
-		for(i=0;i<MAX_Err;i++)
+		for(i=0;i<=MAX_Err;i++)
 		{
 			unsigned char mlen = MESSAGE_LEN;
-	        unsigned char mlenP;
-	        unsigned char * mlenP2 = &mlenP;
+	        	unsigned char mlenP;
+	        	unsigned char * mlenP2 = &mlenP;
 			unsigned char * buf = (unsigned char *)calloc(MESSAGE_LEN+CIPHER_LEN,sizeof(unsigned char)); //[MESSAGE_LEN+CIPHER_LEN];
-	        unsigned char * buf2 = (unsigned char *)calloc(MESSAGE_LEN+CIPHER_LEN,sizeof(unsigned char));
-	        unsigned char * m_buf = (unsigned char *)calloc(MESSAGE_LEN+1,sizeof(unsigned char));
-	        unsigned char * code1 = (unsigned char *)calloc(CODE_LEN,sizeof(unsigned char));
+	        	unsigned char * buf2 = (unsigned char *)calloc(MESSAGE_LEN+CIPHER_LEN,sizeof(unsigned char));
+	        	unsigned char * m_buf = (unsigned char *)calloc(MESSAGE_LEN+1,sizeof(unsigned char));
+	        	unsigned char * code1 = (unsigned char *)calloc(CODE_LEN,sizeof(unsigned char));
 			
 			if(k >= extras) repeatNum = k - extras; // row index to Cycles array
 			errNum = i; // column index to Cycles array
@@ -75,7 +75,7 @@ int test_bch()
 			
 			uint8_t *code3 = (uint8_t *)code1;
 			// -- Create error
-			for(j = 0; j <= i; j++) {
+			for(j = 0; j < i; j++) {
 				code3[pos_arr[j]] = code3[pos_arr[j]] ^ (1 << (j & 7));
 			}
 			
@@ -102,16 +102,16 @@ int test_bch()
 	
 	if(!print_to_file) {
 		for(i = 0; i < REPEATS; i++)
-			for(j = 0; j < MAX_Err - 1; j++)
+			for(j = 0; j <= MAX_Err; j++)
 				printf("%llu\n",cycles[i][j]);
 	}
 	if(print_to_file) {
 		FILE * fp = fopen("cycles.csv","w");
 		for(i = 2000;i<REPEATS;i++)
 		{
-			for(j = 0;j<MAX_Err - 1;j++)
+			for(j = 0;j<MAX_Err;j++)
 				fprintf(fp,"%llu,",cycles[i][j]);
-			fprintf(fp,"%llu\n",cycles[i][MAX_Err - 1]);
+			fprintf(fp,"%llu\n",cycles[i][MAX_Err]);
 		}
 		fclose(fp);
 	}

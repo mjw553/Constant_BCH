@@ -54,7 +54,7 @@ int main(void)
 
 	//seed_rng();
 
-	for(int k = 1; k <= fixed_errors_up_to; k++) {
+	for(int k = 0; k <= fixed_errors_up_to; k++) {
 		send_USART_str(">>>=======================");
 		for(count=0; count<repeats_per_error; count++)
 		{

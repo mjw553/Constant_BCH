@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 				entropy_input[l] = l;
 			randombytes_init(entropy_input, NULL, 256);
 
-			for(int k = 1; k <= 20; k++) {
+			for(int k = 0; k <= 20; k++) {
 				num_errors = k;
 				//if(argc == 3)
 				//	num_errors = atoi(argv[2]);
