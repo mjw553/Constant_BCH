@@ -14,3 +14,6 @@ To run cpucycle tests and output results, in each sub-directory run:
 * `make clean`
 * `make`
 * `./bch`
+
+If `print_to_file = 0`, output will be printed on the terminal.<br>
+If `print_to_file = 1`, output will be printed to file `cycles.csv`.
