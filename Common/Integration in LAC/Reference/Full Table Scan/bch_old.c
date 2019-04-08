@@ -2,6 +2,23 @@
  * Based on original BCH library by Ivan Djelic. 
  *
 */
+/*
+#if defined(__KERNEL__)
+
+# include <linux/kernel.h>
+# include <linux/errno.h>
+# include <linux/init.h>
+# include <linux/module.h>
+# include <linux/slab.h>
+# include <linux/bitops.h>
+# include <asm/byteorder.h>
+# include <linux/bch.h>
+
+#else
+
+# define _BSD_SOURCE*/
+//# include <endian.h>
+//# include <errno.h>
 # define _BSD_SOURCE
 # include <stdint.h>
 # include <stdio.h>
@@ -19,7 +36,7 @@
 # define kfree(ptr) free(ptr)
 # define DIV_ROUND_UP(a, b) ((a + b - 1) / b)
 # define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*(arr)))
-# define cpu_to_be32(x) (x)
+# define cpu_to_be32(x) htobe32(x)
 # define fls(x) ({ \
 	unsigned int __tmp = x; \
 	unsigned int __count = 0; \
@@ -28,6 +45,7 @@
 	__count + 1; \
 })
 
+//#endif
 #define EINVAL  100
 #define EBADMSG 74
 #if defined(CONFIG_BCH_CONST_PARAMS)
@@ -47,9 +65,9 @@
 #define dbg(_fmt, args...)     do {} while (0)
 #endif
 
-//#include <x86intrin.h>
+#include <x86intrin.h>
 #include <inttypes.h>
-//#define cpucycles() _rdtsc()
+#define cpucycles() _rdtsc()
 
 #if defined(LAC128)
 //bch(511,256,61)
@@ -75,11 +93,9 @@ static void encode_bch_unaligned_constant(
 				 const unsigned char *data, unsigned int len,
 				 uint32_t *ecc)
 {
-	int i;
+	int i,max_len = 3, lenFlag;
 	const uint32_t *p;
 	const int l = (MAX_ERROR * LOG_CODE_LEN + 32 - 1) / 32 -1;
-	
-	int max_len = 3, lenFlag;
 	unsigned int mask = 0x80000000;
 
 	while (max_len--) {
@@ -97,9 +113,6 @@ static void encode_bch_unaligned_constant(
 	}
 }
 
-/*
-* Constant-time copy of arrays with 8-bit elements.
-*/
 void cmov_8(uint8_t *r, const uint8_t *x, size_t len, unsigned char executeFlag)
 {
 	size_t i;
@@ -110,9 +123,6 @@ void cmov_8(uint8_t *r, const uint8_t *x, size_t len, unsigned char executeFlag)
   }
 }
 
-/*
-* Constant-time copy of arrays with 32-bit elements.
-*/
 void cmov_32(uint32_t *r, uint32_t *x, size_t len, unsigned char executeFlag)
 {
 	size_t i;
@@ -159,18 +169,23 @@ static void store_ecc8(uint8_t *dst,
 	pad[2] = (src[nwords] >>  8) & 0xff;
 	pad[3] = (src[nwords] >>  0) & 0xff;
 	cmov_8(dst,pad,nbytes-4*nwords,1);
+	//memcpy(dst, pad, nbytes-4*nwords);
 }
 
-/*
-* Replace htobe32() function
-*/
-uint32_t swap(uint32_t data) {
-	return (((data>>24)&0xff)|((data<<8)&0xff0000)|((data>>8)&0xff00)|((data<<24)&0xff000000));
-}
-
-/*
-* Encode BCH data to calculate error-correcting parity.
-*/
+/**
+ * encode_bch - calculate BCH ecc parity of data
+ * @bch:   BCH control structure
+ * @data:  data to encode
+ * @len:   data length in bytes
+ * @ecc:   ecc parity data, must be initialized by caller
+ *
+ * The @ecc parity array is used both as input and output parameter, in order to
+ * allow incremental computations. It should be of the size indicated by member
+ * @ecc_bytes of @bch, and should be initialized to 0 before the first call.
+ *
+ * The exact number of computed ecc parity bits is given by member @ecc_bits of
+ * @bch; it may be less than m*t for large values of t.
+ */
 void encode_bch(uint32_t *ecc_buf, const uint8_t *data,
 		unsigned int len, uint8_t *ecc)
 {
@@ -222,7 +237,7 @@ void encode_bch(uint32_t *ecc_buf, const uint8_t *data,
 	while (max_len--) {
 		maxlenFlag = (int)(((max_len - mlen) & mask) >> 31); // if max_len < mlen, execute.
 		/* input data is read in big-endian format */
-		w = r[0]^swap(*pdata);
+		w = r[0]^cpu_to_be32(*pdata);
 		pdata += (1 * maxlenFlag);
 		p0 = tab0 + (l+1)*((w >>  0) & 0xff);
 		p1 = tab1 + (l+1)*((w >>  8) & 0xff);
@@ -246,127 +261,8 @@ void encode_bch(uint32_t *ecc_buf, const uint8_t *data,
 	if (ecc)
 		store_ecc8(ecc, ecc_buf);
 }
+EXPORT_SYMBOL_GPL(encode_bch);
 
-// one entry contains 7 consecutive entries of a_pow_tab.
-uint32_t a_pow_tab_packed[] =
-{1049601,8396808,67174464,17843217,12984456,102860898,9971457,79769676,118604913,22955929,44480686,94989138,68621509,28339227,96952536,125291763,41848747,57203518,59700148,78592966,74521671,43033641,67699528,22041621,46571688,111782754,81344325,131200125,123717625,54452159,19815326,19290262,23480466,57067698,65989554,128973814,79642567,82918479,110208105,85542745,26637469,82258122,103910499,1574665,12595212,100761696,26765073,75968716,87116883,14034057,111257706,77145921,97612893,131589369,125816827,37658543,23616286,50778292,15608706,123852918,48146337,107584366,47757093,105485164,64550709,101684204,33062679,126349564,100626387,112704751,70848331,13644813,109158504,93939537,93811933,100101339,116894955,104435563,5773069,46182444,109683552,98137941,127399165,92229595,45530287,86592346,1447045,10496010,83968080,22430865,48670890,128576370,77543365,99712095,114795753,121229179,1972109,14694414,117555312,31352721,111655150,79245123,80819277,127001721,90130393,62323903,91179994,37133479,19417882,17191060,6686850,52480050,30303120,103258342,12070659,96563292,123192561,58642363,53402558,28212118,86464726,7736451,60876858,97477584,121101559,8261515,65075262,131064816,130023415,71245775,15744015,125952120,98527185,129498367,75435979,49331247,118080376,27162517,78067918,70323267,9446409,75571272,85017681,30827673,115845354,112832355,72947533,64025661,105874408,66649911,118477820,29261719,94861534,74910915,45132843,84493144,18240661,15083658,119654514,14559105,115456110,110733153,89741149,60224701,74386378,40934439,50905912,9319300,73472070,34636833,264,1};
- 
-
-// one entry contains 7 consecutive entries of a_log_tab.
-uint32_t a_log_tab_packed[] =
-{262144,68158594,935043,61737892,76393092,2361734,68691877,90036293,56268933,95832103,1504135,131864059,5409702,16650223,62364742,106344617,87301254,39169675,77053480,46325209,99316616,86248647,3097596,15987158,85508007,80226908,69263344,37781930,121510471,25811997,90535594,73346204,4187783,32152702,56834700,94186610,125855785,6442439,96380378,78472111,116026249,21427905,2064584,95327299,109708797,38541523,132607959,43809603,25302952,122850970,5922909,20866989,29422065,122294834,17100203,84222720,70795336,66822631,62781470,57722442,49300651,71480502,106817693,82719209,131160712,9445835,87937151,93386430,108621965,63287897,39831667,114479180,13945386,58442465,77513672,14693273,89118683,74113310,46778800,54417725,81443210,72054317,99805378,27305119,117828809,4723087,86944836,98752550,67961854,61556513,3607252,125380746,115433432,131855558,16506180,105992653,70328233,48808476,86125723,15707040,80000606,88354414,80893358,117219520,31783922,93905820,69962803,79668889,31235500,94929969,38380801,43681206,8762953,63839925,122058216,84016757,66571295,126738683,26437195,92388064,9409708,93158119,91009207,97395244,64278174,14627214,73808874,54163683,45857417,129493701,4663244,98323285,61227136,78029188,32734399,118934427,48510606,15417109,57203290,82175156,127303284,79245562,94658637,43477713,26928171,74476941,126458594,92127154,92917193,116805719,7047578,28341012,129075676,98216338,96929567,53622668,60210609,81880662,79033150,43098159,91592587,65171029,116475438,28190659,97985219,100334466,21954208,100717217,64792778,28017826,400,385};
- 
-/*
-* Efficient packed implementation of blinded array access.
-*/
-uint32_t a_log_tab_blind_access_parallel7x(uint32_t index)
-{
-    uint32_t xorVal, setZero, locIndex, allIndex, anyOnes, res;
-    uint32_t one7x = 262657;
-    uint32_t seven7x = 787971;
-    uint32_t one = 1;
-    uint32_t nine_ones = 511;           
-
-    uint32_t j;
-    uint32_t sum = 0;
-
-	// pack index
-    uint32_t index_packed = index + (index<<(9*1)) + (index<<(9*2));
-    
-    // pack iterator
-	uint32_t j_packed;
-    j = 0;
-    j_packed = j + ((j+1)<<(9*1))+ ((j+2)<<(9*2));
-
-	// Index 0 to 509
-    for(j=0; j<510; j=j+3)
-	{
-        xorVal = j_packed ^ index_packed;
-        setZero = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-        locIndex = (setZero&one7x) ^ one7x;
-        allIndex = locIndex * nine_ones;
-        sum = sum + (allIndex & a_log_tab_packed[j/3]); 
-        j_packed = j_packed + seven7x;
-	}
-   
-   	// Index 510
-	xorVal = 510 ^ index;
-	anyOnes = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-	allIndex = (anyOnes&one) - one;
-	sum = sum + (allIndex & a_log_tab_packed[170]);  
-
-   	// Index 511
-	xorVal = 511 ^ index;
-	anyOnes = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-	allIndex = (anyOnes&one) - one;
-	sum = sum + (allIndex & a_log_tab_packed[171]);  
-
-    // unpacking
-    res = (sum & 511);
-    sum = sum >> 9;
-    res = res + (sum & 511);
-    sum = sum >> 9;
-    res = res + (sum & 511);
-
-    return(res);
-}
- 
-
-uint32_t a_pow_tab_blind_access_parallel7x(uint32_t index)
-{
-    uint32_t xorVal, setZero, locIndex, allIndex, anyOnes, res;
-    uint32_t one7x = 262657;
-    uint32_t seven7x = 787971;
-    uint32_t one = 1;
-    uint32_t nine_ones = 511;           
-
-    uint32_t j;
-    uint32_t sum = 0;
-
-	// pack index
-    uint32_t index_packed = index + (index<<(9*1)) + (index<<(9*2));
-    
-    // pack iterator
-	uint32_t j_packed;
-    j = 0;
-    j_packed = j + ((j+1)<<(9*1))+ ((j+2)<<(9*2));
-
-	// Index 0 to 509
-    for(j=0; j<510; j=j+3)
-	{
-        xorVal = j_packed ^ index_packed;
-        setZero = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-        locIndex = (setZero&one7x) ^ one7x;
-        allIndex = locIndex * nine_ones;
-        sum = sum + (allIndex & a_pow_tab_packed[j/3]); 
-        j_packed = j_packed + seven7x;
-	}
-   
-   	// Index 510
-	xorVal = 510 ^ index;
-	anyOnes = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-	allIndex = (anyOnes&one) - one;
-	sum = sum + (allIndex & a_pow_tab_packed[170]);  
-
-   	// Index 511
-	xorVal = 511 ^ index;
-	anyOnes = (xorVal>>8)|(xorVal>>7)|(xorVal>>6)|(xorVal>>5)|(xorVal>>4)|(xorVal>>3)|(xorVal>>2)|(xorVal>>1)|(xorVal);
-	allIndex = (anyOnes&one) - one;
-	sum = sum + (allIndex & a_pow_tab_packed[171]);  
-
-    // unpacking
-    res = (sum & 511);
-    sum = sum >> 9;
-    res = res + (sum & 511);
-    sum = sum >> 9;
-    res = res + (sum & 511);
-
-    return(res);
-}
-
-/*
-* Blinded read for elp
-*/
 unsigned int elp_read(unsigned int * arr, size_t size, int index) {
 	unsigned int temp1, temp2;
 	unsigned int one = 1;
@@ -376,18 +272,19 @@ unsigned int elp_read(unsigned int * arr, size_t size, int index) {
 
 	for(j=0; j < size; j++)
 	{
-		temp1 = j ^ index;	// XOR potential index with required index
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1); // {0} if j = index, {1} otherwise
-		temp1 = (temp2&1) - one; // [1] if temp2 = {0}, [0] otherwise
-		sum = sum + (temp1 & arr[j]); // temp1 = [0] except if j = index
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		sum = sum + (temp1 & arr[j]);	// temp1 is 0 in all cases except j=index
   	}
 
 	return(sum);
 }
 
-/*
-* Blinded read for data
-*/
 uint8_t data_read(uint8_t * arr, size_t size, int index) {
 	uint8_t temp1, temp2;
 	uint8_t one = 1;
@@ -397,17 +294,19 @@ uint8_t data_read(uint8_t * arr, size_t size, int index) {
 
 	for(j=0; j < size; j++)
 	{
-		temp1 = j ^ index;
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
 		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-		sum = sum + (temp1 & arr[j]);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		sum = sum + (temp1 & arr[j]);	// temp1 is 0 in all cases except j=index
   	}
+
 	return(sum);
 }
 
-/*
-* Blinded read for ecc_buff
-*/
 uint32_t ecc_buff_read(uint32_t * arr, size_t size, int index) {
 	uint32_t temp1, temp2;
 	uint32_t one = 1;
@@ -417,99 +316,41 @@ uint32_t ecc_buff_read(uint32_t * arr, size_t size, int index) {
 
 	for(j=0; j < size; j++)
 	{
-		temp1 = j ^ index;
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
 		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-		sum = sum + (temp1 & arr[j]);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		sum = sum + (temp1 & arr[j]);	// temp1 is 0 in all cases except j=index
   	}
+
 	return(sum);
 }
 
-/*
-* Blinded write for elp
-*/
-unsigned int elp_write_flag(unsigned int * arr, size_t size, int index, unsigned int val, int writeFlag) {
-	unsigned int temp1, temp2;
-	unsigned int one = 1;
-
-	unsigned int j;
-	unsigned int sum = 0;
-	unsigned int arrVal;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-        arrVal = arr[j];
-		arr[j] = ((~temp1) & arrVal) + (temp1 & (val * writeFlag + arrVal * !writeFlag));
-  	}
-	return(sum);
+uint16_t a_pow_full_table_scan(unsigned int index) {
+	// Put a_pow into cache
+	int i;
+	uint16_t a;
+	for(i = 0; i < 512; i++) {
+		a = a_pow_tab[i];
+	}
+	a = a_pow_tab[index];
+	return a;
 }
 
-/*
-* Blinded write for data
-*/
-uint8_t data_write(uint8_t * arr, size_t size, int index, uint8_t val) {
-	uint8_t temp1, temp2;
-	uint8_t one = 1;
-
-	uint8_t j;
-	uint8_t sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);
-  	}
-	return(sum);
+uint16_t a_log_full_table_scan(unsigned int index) {
+	// Put a_pow into cache
+	int i;
+	uint16_t a;
+	for(i = 0; i < 512; i++) {
+		a = a_log_tab[i];
+	}
+	a = a_log_tab[index];
+	return a;
 }
 
-/*
-* Blinded write for bch cache
-*/
-int bch_write(int * arr, size_t size, int index, unsigned int val) {
-	int temp1, temp2;
-	int one = 1;
-
-	size_t j;
-	int sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);
-  	}
-	return(sum);
-}
-
-/*
-* Blinded read for bch cache
-*/
-int bch_read(int * arr, size_t size, int index) {
-	int temp1, temp2;
-	int one = 1;
-
-	size_t j;
-	int sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-		temp1 = (temp2&1) - one;
-		sum = sum + (temp1 & arr[j]);
-  	}
-	return(sum);
-}
-
-/*
-* BCH decode part 1 - Syndrome Generation
-*/
 static void compute_syndromes(uint32_t *ecc, unsigned int *syn)
 {
 	int i, j, s;
@@ -538,22 +379,87 @@ static void compute_syndromes(uint32_t *ecc, unsigned int *syn)
 			for (j = 0; j < 2*t; j += 2) {
 				syn[j] ^= a_pow_tab[((j+1)*(bit+s) - n * (((j+1)*(bit+s)) / n))] * i;
 			}
+			//poly ^= (1 << i);
 		}
 	} while (s > 0);
 
 	/* v(a^(2j)) = v(a^j)^2 */
 	for (j = 0; j < t; j++) {
 		synVal = syn[j];
-		powVal = 2* a_log_tab_blind_access_parallel7x(synVal);
+		powVal = 2* a_log_full_table_scan(synVal);
 		mFlag = (int)(((0 - synVal) & mask) >> 31); // if synVal > 0
-		syn[2*j+1] = a_pow_tab_blind_access_parallel7x(powVal - n * (powVal / n)) * mFlag;
+		syn[2*j+1] = a_pow_full_table_scan(powVal - n * (powVal / n)) * mFlag;
 	}
 	
 }
 
-/*
-* BCH decode part 2 - Error-location polynomial calculation
-*/
+unsigned int elp_write(unsigned int * arr, size_t size, int index, unsigned int val) {
+	unsigned int temp1, temp2;
+	unsigned int one = 1;
+
+	unsigned int j;
+	unsigned int sum = 0;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);	// temp1 is 0 in all cases except j=index
+  	}
+
+	return(sum);
+}
+
+unsigned int elp_write_flag(unsigned int * arr, size_t size, int index, unsigned int val, int writeFlag) {
+	unsigned int temp1, temp2;
+	unsigned int one = 1;
+
+	unsigned int j;
+	unsigned int sum = 0;
+	unsigned int arrVal;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+        arrVal = arr[j];
+		arr[j] = ((~temp1) & arrVal) + (temp1 & (val * writeFlag + arrVal * !writeFlag));	// temp1 is 0 in all cases except j=index
+  	}
+
+	return(sum);
+}
+
+uint8_t data_write(uint8_t * arr, size_t size, int index, uint8_t val) {
+	uint8_t temp1, temp2;
+	uint8_t one = 1;
+
+	uint8_t j;
+	uint8_t sum = 0;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);	// temp1 is 0 in all cases except j=index
+  	}
+
+	return(sum);
+}
+
 static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * elp_c, unsigned int *deg)
 {
 	unsigned int i, j, l, d, read_write_val;
@@ -562,10 +468,8 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 	const unsigned int n = (1 << LOG_CODE_LEN)-1;
 	const unsigned int t = MAX_ERROR;
 	int k, pp = -1, modu = 0, boundsFlag = 0, dFlag = 0;
-	
-	/* Flags */
-	int v = 0; 
-	int x = 0;
+	int v = 0; /* IF control */
+	int x = 0; /* FOR control */
 	int a = 0;
 	int b = 0;
 	int y = 0;
@@ -582,67 +486,62 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 		b = (int)(((elpDeg - (t + 1)) & mask) >> 31); // b = 1 if elp->deg <= t, setting to 0 means no effect saved, so can make a_pow and a_log 0.
 		dFlag = (int)(((0 - d) & mask) >> 31) * b; // is d > 0?
 		k = ((2*i) - pp) * dFlag;
-		
-		/* Copy elp_c to elp_copy_c */
 		for(it = 0; it <= t; it++) {
 			boundsFlag = (int)(((it - (elpDeg+1)) & mask) >> 31); // boundsFlag = 1 if it < elpDeg+1
-			read_write_val = elp_copy_c[it];
-			elp_copy_c[it] = read_write_val ^ (-dFlag & -boundsFlag & (read_write_val ^ elp_c[it]));		
+		    read_write_val = elp_copy_c[it];
+			elp_copy_c[it] = read_write_val ^ (-dFlag & -boundsFlag & (read_write_val ^ elp_c[it]));
 		}
 		
 		/* e[i+1](X) = e[i](X)+di*dp^-1*X^2(i-p)*e[p](X) */
-		tmp = (a_log_tab_blind_access_parallel7x(d) + n - a_log_tab_blind_access_parallel7x(pd)) * dFlag + tmp * !dFlag ;
+		tmp = (a_log_full_table_scan(d) + n - a_log_full_table_scan(pd)) * dFlag + tmp * !dFlag ;
 		
 		for (j = 0; j <= t; j++) {
 			x = (int)(((j - (pelpDeg+1)) & mask) >> 31) * dFlag; // x = 1 if j <= pelp->deg
 			a = j;
-			pelpVal = pelp_c[a];			
-			v = (((0 - pelpVal) & mask) >> 31) * x; // v = 1 if pelp->c[a] > 0
+			pelpVal = pelp_c[a];
+			v = (((0 - pelpVal) & mask) >> 31) * x; 
 	
-			l = a_log_tab_blind_access_parallel7x(pelpVal) * v;
+			l = a_log_full_table_scan(pelpVal) * v;
 			
 			modu = (tmp+l) - n * ((tmp+l) / n);
 			
-			read_write_val = elp_read(elp_c,ELP_SIZE,a+k) ^ (a_pow_tab_blind_access_parallel7x(modu) * v);
-			elp_write_flag(elp_c,ELP_SIZE,a+k,read_write_val,1);
+			read_write_val = elp_read(elp_c,ELP_SIZE,a+k) ^ (a_pow_full_table_scan(modu) * v);
+			elp_write(elp_c,ELP_SIZE,a+k,read_write_val);
 		}
 		
-		/* compute l[i+1] = max(l[i]->c[l[p]+2*(i-p)]) */
+		/* compute l[i+1] = max(l[i]->c[l[p]+2*(i-p]) */
 		tmp = (pelpDeg - 1 + k) * dFlag;
 		v = (int)(((elpDeg - tmp) & mask) >> 31) * dFlag; // v = 1 if tmp > elp->deg
 		pelpDeg = (elpDeg + 1) * v + pelpDeg * !v;
-		
-		/* Copy elp_copy_c to pelp_c */
 		for(it = 0; it <= t; it++) {
 			boundsFlag = (int)(((it - (elpDeg+1)) & mask) >> 31); // boundsFlag = 1 if it < elpDeg+1
 			read_write_val = pelp_c[it];
-			pelp_c[it] = read_write_val ^ (-dFlag & -boundsFlag & (read_write_val ^ elp_copy_c[it]));
+			pelp_c[it] = read_write_val ^ (-v & -boundsFlag & (read_write_val ^ elp_copy_c[it]));
 		}
 		elpDeg = tmp * v + elpDeg * !v;
 		pd = d * v + pd * !v;
 		pp = 2*i*v + pp*!v;	
 		
-		/* d[i+1] = S(2i+3)+elp[i+1].1*S(2i+2)+...+elp[i+1].lS(2i+3-l) */
+		/* di+1 = S(2i+3)+elp[i+1].1*S(2i+2)+...+elp[i+1].lS(2i+3-l) */
 		a = (int)(((i - (t-1)) & mask) >> 31) * b; // a = 1 if t-1 > i
-		// S(2i+3)
 		synVal = syn2[2*i+2];
 		d = synVal * a + d * !a;
 		elpDeg = elpDeg + 1;
-		// +elp[i+1}.S(2i+2)+..
 		for (j = 1; j <= t; j++) {
 			x = (int)(((j - (elpDeg)) & mask) >> 31) * a; // x = 1 if j <= elp->deg
-			synVal = elp_read(syn2,2*t,2*i+2-(j*x));
+			synVal = elp_read(syn2,2*t,2*i+2-j);
 			elpVal = elp_c[j];
-			v = (int)(((0 - elpVal) & mask) >> 31); // if(elpVal)
-			v = (int)(((0 - synVal) & mask) >> 31) * v; // if(elpVal && synVal)
-			v = v * x; // if(elpVal && synVal && j <= elp->deg)
+			v = (int)(((0 - elpVal) & mask) >> 31);
+			v = (int)(((0 - synVal) & mask) >> 31) * v;
+			v = v * x;
+			//v = (int)(elpVal && synVal) * x;
 			
-			synVal = elp_read(syn2,2*t,2*i+2-(j*x));
-			evalVal = a_log_tab_blind_access_parallel7x(elpVal) + a_log_tab_blind_access_parallel7x(synVal);
+			synVal = elp_read(syn2,2*t,2*i+2-j);
+			evalVal = a_log_full_table_scan(elpVal) + a_log_full_table_scan(synVal);
 			
 			y = (int)(((evalVal - n) & mask) >> 31); // y = 1 if evalVal < GF_N(bch)
 			
-			d = d ^ a_pow_tab_blind_access_parallel7x( evalVal - (n * !y ) ) * v;
+			d = d ^ a_pow_full_table_scan( evalVal - (n * !y ) ) * v;
 		}
 		elpDeg = elpDeg - 1;
 	}
@@ -651,9 +550,6 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 	return (-1 * y + (int)elpDeg * !y);
 }
 
-/*
-* BCH decode part 3 - Chien Search
-*/
 static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, int d)
 {
 	int m;
@@ -669,43 +565,43 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 	unsigned int p0 = p[0];
 	unsigned int pd = elp_read(p,t+1,d);
 
-	unsigned int log_pd_val = a_log_tab_blind_access_parallel7x(pd);
-	int logVal = a_log_tab_blind_access_parallel7x(p0) + n - log_pd_val;
+	unsigned int log_pd_val = a_log_full_table_scan(pd);
+	int logVal = a_log_full_table_scan(p0) + n - log_pd_val;
 
 	x = (int)(((logVal - n) & mask) >> 31); // x = 1 if val < n
 	v = (int)(((0 - p0) & mask) >> 31); // v = 1 if p0 > 0
 
-	syn0 = a_pow_tab_blind_access_parallel7x(logVal - (n*!x)) * v;
-
+    syn0 = a_pow_full_table_scan(logVal - (n*!x)) * v;
+	
 	int l = n - log_pd_val;
 
-	/* use a log-based representation of polynomial */	
 	for (i = 0; i <= t; i++) {
 		x = (int)(((i - d) & mask) >> 31); // x = 1 if i < d
 		pi = p[i];
 		v = (int)(((0 - pi) & mask) >> 31) * x; // v = 1 if p->c[i*x] > 0
 
-		val = a_log_tab_blind_access_parallel7x(pi)+l;
+        val = a_log_full_table_scan(pi)+l;
 
 		val = val - n * (val / n);
 		bch_cache[i] = (val * v + -1 * !v) * x + 0 * !x;
 	}
-	/* Main Algorithm */
+
+
 	for (i = 1; i <= n; i++) {
 		a = (int)(((i - n-k) & mask) >> 31); // if i > n - k
-		/* Test each potential a^i */
+
 		for (j = 1, syn = syn0; j <= t; j++) {
 			x = (int)(((j - (d + 1)) & mask) >> 31) * !z * a; // x = 1 if j <= d
 			m = bch_cache[j];
 			v = (int)(((0 - (m+1)) & mask) >> 31) * x; // v = 1 if m >= 0
 
+			//**
 			val = ((m + j * i)*v) - n * (((m + j * i)*v) / n);
-			syn ^= a_pow_tab_blind_access_parallel7x(val) * v;
+			syn ^= a_pow_full_table_scan(val) * v;
 		}
-		/* Store found roots */
+
 		v = !(int)(((0 - syn) & mask) >> 31) * !z * a; // v = 1 if syn == 0
-		val = (n - i) * v + elp_read(roots,t,count) * !v;
-		elp_write_flag(roots,t,count,val,1);
+		elp_write_flag(roots,t,count,n-i,v);
 		count = count + (1 * v);
 		z = !((int)((0 - (d - count)) & mask) >> 31) * v;
 	}
@@ -713,9 +609,50 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 	return (count * (int)z);
 }
 
-/*
-* Main BCH Decode Process
-*/
+int bch_write(int * arr, size_t size, int index, unsigned int val) {
+	int temp1, temp2;
+	int one = 1;
+
+	size_t j;
+	int sum = 0;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);	// temp1 is 0 in all cases except j=index
+  	}
+
+	return(sum);
+}
+
+int bch_read(int * arr, size_t size, int index) {
+	int temp1, temp2;
+	int one = 1;
+
+	size_t j;
+	int sum = 0;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
+
+		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+
+		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
+
+		sum = sum + (temp1 & arr[j]);	// temp1 is 0 in all cases except j=index
+  	}
+
+	return(sum);
+}
+
 int decode_bch_const(uint8_t *data, uint32_t *ecc_buff, unsigned int len)
 {	
 	// Prep
@@ -725,7 +662,6 @@ int decode_bch_const(uint8_t *data, uint32_t *ecc_buff, unsigned int len)
 	
 	// 1. Compute Syndromes
 	unsigned int syn2[2*t];
-	
 	compute_syndromes(ecc_buff, syn2);
 
 	// 2. Compute Error Location Polynomial
@@ -733,7 +669,7 @@ int decode_bch_const(uint8_t *data, uint32_t *ecc_buff, unsigned int len)
 
 	// 3. Error correction.
 	unsigned int errloc[t];
-	
+
     nroots = chien_search(1,elp_c,errloc,deg);
     
 
@@ -791,3 +727,7 @@ void prepare_ecc_buff(uint32_t *ecc_buff, const uint8_t *recv_ecc)
 		sum |= eccVal;
 	}
 }
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Ivan Djelic <ivan.djelic@parrot.com>");
+MODULE_DESCRIPTION("Binary BCH encoder/decoder");

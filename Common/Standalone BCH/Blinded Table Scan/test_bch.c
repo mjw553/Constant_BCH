@@ -56,13 +56,13 @@ int test_bch()
 
 			// -- Encode a random message
 			//generate random message m, stored in buf
-			//random_bytes(buf,MESSAGE_LEN);
 			generate_input(buf, MESSAGE_LEN);
 			
 			//package m_buf
 			memset(m_buf,0,MESSAGE_LEN+1);
 			memcpy(m_buf,&mlen,1);
 			memcpy(m_buf+1,buf,mlen);
+			
 			//encode m with ecc code
 			ecc_enc(m_buf,code1);
 			

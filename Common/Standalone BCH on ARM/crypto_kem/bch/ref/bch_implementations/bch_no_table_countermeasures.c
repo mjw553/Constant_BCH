@@ -2,24 +2,6 @@
  * Based on original BCH library by Ivan Djelic. 
  *
 */
-
-/*
-#if defined(__KERNEL__)
-
-# include <linux/kernel.h>
-# include <linux/errno.h>
-# include <linux/init.h>
-# include <linux/module.h>
-# include <linux/slab.h>
-# include <linux/bitops.h>
-# include <asm/byteorder.h>
-# include <linux/bch.h>
-
-#else
-
-# define _BSD_SOURCE*/
-//# include <endian.h>
-//# include <errno.h>
 # define _BSD_SOURCE
 # include <stdint.h>
 # include <stdio.h>
@@ -46,7 +28,6 @@
 	__count + 1; \
 })
 
-//#endif
 #define EINVAL  100
 #define EBADMSG 74
 #if defined(CONFIG_BCH_CONST_PARAMS)
@@ -66,9 +47,7 @@
 #define dbg(_fmt, args...)     do {} while (0)
 #endif
 
-//#include <x86intrin.h>
 #include <inttypes.h>
-//#define cpucycles() _rdtsc()
 
 #if defined(LAC128)
 //bch(511,256,61)
@@ -116,6 +95,9 @@ static void encode_bch_unaligned_constant(
 	}
 }
 
+/*
+* Constant-time copy of arrays with 8-bit elements.
+*/
 void cmov_8(uint8_t *r, const uint8_t *x, size_t len, unsigned char executeFlag)
 {
 	size_t i;
@@ -126,6 +108,9 @@ void cmov_8(uint8_t *r, const uint8_t *x, size_t len, unsigned char executeFlag)
   }
 }
 
+/*
+* Constant-time copy of arrays with 32-bit elements.
+*/
 void cmov_32(uint32_t *r, uint32_t *x, size_t len, unsigned char executeFlag)
 {
 	size_t i;
@@ -172,28 +157,18 @@ static void store_ecc8(uint8_t *dst,
 	pad[2] = (src[nwords] >>  8) & 0xff;
 	pad[3] = (src[nwords] >>  0) & 0xff;
 	cmov_8(dst,pad,nbytes-4*nwords,1);
-	//memcpy(dst, pad, nbytes-4*nwords);
 }
 
+/*
+* Replace htobe32() function
+*/
 uint32_t swap(uint32_t data) {
 	return (((data>>24)&0xff)|((data<<8)&0xff0000)|((data>>8)&0xff00)|((data<<24)&0xff000000));
 }
 
-/**
- * encode_bch - calculate BCH ecc parity of data
- * @bch:   BCH control structure
- * @data:  data to encode
- * @len:   data length in bytes
- * @ecc:   ecc parity data, must be initialized by caller
- *
- * The @ecc parity array is used both as input and output parameter, in order to
- * allow incremental computations. It should be of the size indicated by member
- * @ecc_bytes of @bch, and should be initialized to 0 before the first call.
- *
-
- * The exact number of computed ecc parity bits is given by member @ecc_bits of
- * @bch; it may be less than m*t for large values of t.
- */
+/*
+* Encode BCH data to calculate error-correcting parity.
+*/
 void encode_bch(uint32_t *ecc_buf, const uint8_t *data,
 		unsigned int len, uint8_t *ecc)
 {
@@ -269,8 +244,30 @@ void encode_bch(uint32_t *ecc_buf, const uint8_t *data,
 	if (ecc)
 		store_ecc8(ecc, ecc_buf);
 }
-EXPORT_SYMBOL_GPL(encode_bch);
 
+/*
+* Blinded read for data
+*/
+uint8_t data_read(uint8_t * arr, size_t size, int index) {
+	uint8_t temp1, temp2;
+	uint8_t one = 1;
+
+	uint8_t j;
+	uint8_t sum = 0;
+
+	for(j=0; j < size; j++)
+	{
+		temp1 = j ^ index;
+		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
+		temp1 = (temp2&1) - one;
+		sum = sum + (temp1 & arr[j]);
+  	}
+	return(sum);
+}
+
+/*
+* BCH decode part 1 - Syndrome Generation
+*/
 static void compute_syndromes(uint32_t *ecc, unsigned int *syn)
 {
 	int i, j, s;
@@ -312,72 +309,9 @@ static void compute_syndromes(uint32_t *ecc, unsigned int *syn)
 	
 }
 
-unsigned int elp_write(unsigned int * arr, size_t size, int index, unsigned int val) {
-	unsigned int temp1, temp2;
-	unsigned int one = 1;
-
-	unsigned int j;
-	unsigned int sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
-
-		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-
-		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
-
-		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);	// temp1 is 0 in all cases except j=index
-  	}
-
-	return(sum);
-}
-
-uint8_t data_read(uint8_t * arr, size_t size, int index) {
-	uint8_t temp1, temp2;
-	uint8_t one = 1;
-
-	uint8_t j;
-	uint8_t sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
-
-		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-
-		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
-
-		sum = sum + (temp1 & arr[j]);	// temp1 is 0 in all cases except j=index
-  	}
-
-	return(sum);
-}
-
-uint8_t data_write(uint8_t * arr, size_t size, int index, uint8_t val) {
-	uint8_t temp1, temp2;
-	uint8_t one = 1;
-
-	uint8_t j;
-	uint8_t sum = 0;
-
-	for(j=0; j < size; j++)
-	{
-		temp1 = j ^ index;			// temp1 becomes 0 only if j=index
-
-		// check if any of the 9 bits is non-zero; temp2 will be either 0 or 1
-		temp2 = (temp1>>8)|(temp1>>7)|(temp1>>6)|(temp1>>5)|(temp1>>4)|(temp1>>3)|(temp1>>2)|(temp1>>1)|(temp1);
-
-		temp1 = (temp2&1) - one;	// temp1 = {0} if temp2=1 otherwise temp1 = {1}
-
-		arr[j] = ((~temp1) & arr[j]) + (temp1 & val);	// temp1 is 0 in all cases except j=index
-  	}
-
-	return(sum);
-}
-
+/*
+* BCH decode part 2 - Error-location polynomial calculation
+*/
 static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * elp_c, unsigned int *deg)
 {
 	unsigned int i, j, l, d, it, read_write_val;
@@ -386,8 +320,10 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 	const unsigned int n = (1 << LOG_CODE_LEN)-1;
 	const unsigned int t = MAX_ERROR;
 	int k, pp = -1, modu = 0, boundsFlag = 0, dFlag = 0;
-	int v = 0; /* IF control */
-	int x = 0; /* FOR control */
+	
+	/* Flags */
+	int v = 0; 
+	int x = 0; 
 	int a = 0;
 	int b = 0;
 	int y = 0;
@@ -404,6 +340,8 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 		b = (int)(((elpDeg - (t + 1)) & mask) >> 31); // b = 1 if elp->deg <= t, setting to 0 means no effect saved, so can make a_pow and a_log 0.
 		dFlag = (int)(((0 - d) & mask) >> 31) * b; // is d > 0?
 		k = ((2*i) - pp) * dFlag;
+		
+		/* Copy elp_c to elp_copy_c */
 		for(it = 0; it <= t; it++) {
 			boundsFlag = (int)(((it - (elpDeg+1)) & mask) >> 31); // boundsFlag = 1 if it < elpDeg+1
 			read_write_val = elp_copy_c[it];
@@ -427,10 +365,12 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 			elp_c[a+k] = read_write_val;
 		}
 		
-		/* compute l[i+1] = max(l[i]->c[l[p]+2*(i-p]) */
+		/* compute l[i+1] = max(l[i]->c[l[p]+2*(i-p)]) */
 		tmp = (pelpDeg - 1 + k) * dFlag;
 		v = (int)(((elpDeg - tmp) & mask) >> 31) * dFlag; // v = 1 if tmp > elp->deg
 		pelpDeg = (elpDeg + 1) * v + pelpDeg * !v;
+		
+		/* Copy elp_copy_c to pelp_c */
 		for(it = 0; it <= t; it++) {
 			boundsFlag = (int)(((it - (elpDeg+1)) & mask) >> 31); // boundsFlag = 1 if it < elpDeg+1
 			read_write_val = pelp_c[it];
@@ -440,18 +380,20 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 		pd = d * v + pd * !v;
 		pp = 2*i*v + pp*!v;	
 		
-		/* di+1 = S(2i+3)+elp[i+1].1*S(2i+2)+...+elp[i+1].lS(2i+3-l) */
+		/* d[i+1] = S(2i+3)+elp[i+1].1*S(2i+2)+...+elp[i+1].lS(2i+3-l) */
 		a = (int)(((i - (t-1)) & mask) >> 31) * b; // a = 1 if t-1 > i
+		// S(2i+3)
 		synVal = syn2[(2*i+2) * a];
 		d = synVal * a + d * !a;
 		elpDeg = elpDeg + 1;
+		// +elp[i+1}.S(2i+2)+..
 		for (j = 1; j <= t; j++) {
 			x = (int)(((j - (elpDeg)) & mask) >> 31) * a; // x = 1 if j <= elp->deg
 			synVal = syn2[(2*i+2-(j*x))*x];
 			elpVal = elp_c[j];
-			v = (int)(((0 - elpVal) & mask) >> 31);
-			v = (int)(((0 - synVal) & mask) >> 31) * v;
-			v = v * x;
+			v = (int)(((0 - elpVal) & mask) >> 31); // if(elpVal)
+			v = (int)(((0 - synVal) & mask) >> 31) * v; // if(elpVal && synVal)
+			v = v * x; // if(elpVal && synVal && j <= elp->deg)
 
 			evalVal = a_log_tab[elpVal] + a_log_tab[synVal];
 			
@@ -466,6 +408,9 @@ static int compute_error_locator_polynomial(unsigned int *syn2,unsigned int * el
 	return (-1 * y + (int)elpDeg * !y);
 }
 
+/*
+* BCH decode part 3 - Chien Search
+*/
 static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, int d)
 {
 	int m;
@@ -491,6 +436,7 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 
 	int l = n - log_pd_val;
 
+	/* use a log-based representation of polynomial */
 	for (i = 0; i <= t; i++) {
 		x = (int)(((i - d) & mask) >> 31); // x = 1 if i < d
 		pi = p[i];
@@ -501,10 +447,10 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 		val = val - n * (val / n);
 		bch_cache[i] = (val * v + -1 * !v) * x + 0 * !x;
 	}
-
+	/* Main Algorithm */
 	for (i = 1; i <= n; i++) {
 		a = (int)(((i - n-k) & mask) >> 31); // if i > n - k
-
+		/* Test each potential a^i */
 		for (j = 1, syn = syn0; j <= t; j++) {
 			x = (int)(((j - (d + 1)) & mask) >> 31) * !z * a; // x = 1 if j <= d
 			m = bch_cache[j];
@@ -513,7 +459,7 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 			val = ((m + j * i)*v) - n * (((m + j * i)*v) / n);
 			syn ^= a_pow_tab[val] * v;
 		}
-
+		/* Store found roots */
 		v = !(int)(((0 - syn) & mask) >> 31) * !z * a; // v = 1 if syn == 0
 		val = (n - i) * v + roots[count] * !v;
 		roots[count] = val;
@@ -524,6 +470,9 @@ static int chien_search(unsigned int len, unsigned int *p, unsigned int *roots, 
 	return (count * (int)z);
 }
 
+/*
+* Main BCH Decode Process
+*/
 int decode_bch_const(uint8_t *data, uint32_t *ecc_buff, unsigned int len)
 {	
 	// Prep
@@ -544,7 +493,6 @@ int decode_bch_const(uint8_t *data, uint32_t *ecc_buff, unsigned int len)
 	
     nroots = chien_search(1,elp_c,errloc,deg);
     
-
 	flag = ((int)((0 - (nroots-err)) & mask) >> 31); // 0 if err == nroots, 1 otherwise.
 	err = -1 * flag + err * !flag;
 
